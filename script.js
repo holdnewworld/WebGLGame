@@ -329,22 +329,6 @@ menu.add(options, 'sound').name('Sound')
     });
 
 /********************** Lights **************************/
-/*var lightSource = new THREE.SpotLight(0xffffff);
-lightSource.position.set(-5, 95, 0);
-scene.add(lightSource);
-
-var lightSource2 = new THREE.SpotLight(0xffffff);
-lightSource2.position.set(5, 95, 0);
-scene.add(lightSource2);
-
-var lightSource3 = new THREE.SpotLight(0xffffff);
-lightSource3.position.set(0, 80, -100);
-scene.add(lightSource3);
-
-var lightSource4 = new THREE.SpotLight(0xffffff);
-lightSource4.position.set(0, 80, 100);
-scene.add(lightSource4);
-*/
 var lightSource = new THREE.PointLight(0xffffff, 1.0, 500);
 lightSource.position.set(0, 95, 0);
 //lightSource5.intensity = 10.0;
