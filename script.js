@@ -148,6 +148,8 @@ var DOWNVECTOR = new THREE.Vector3(0, -1, 0);
 var WIDTH = window.innerWidth;
 var HEIGHT = window.innerHeight;
 
+var TIME_LIMIT = 600; // ten minutes
+
 /********************** Static functions ********************/
 
 // the higher deg is, the lower probability is
@@ -174,15 +176,6 @@ function getSelectedObjectGroup() {
 }
 
 function enterLookCloseMode(objectGroup) {
-  if (objectGroup.name == "wooden box" && holding_wooden_box) {
-    // clicking wooden box while holding it should do nothing
-    return;
-  } else if (objectGroup.name == "wooden box" && wooden_box_found) {
-    // second click on the wooden box
-    holding_wooden_box = true;
-    return;
-  }
-
   lookCloseMode = true;
   if (objectGroup.name == "wooden box") {
     // once clicked, let it remain visible
@@ -230,6 +223,20 @@ function closeEachOther(obj1, obj2, minDist) {
     && (Math.abs(obj1.z-obj2.z)<=minDist);
 }
 
+function gameClear() {
+  camera.position.x = 3000;
+  camera.position.y = 3000;
+  camera.position.z = 3000;
+  camera.lookAt(new THREE.Vector3(3000,3000,3000));
+}
+
+function gameOver() {
+  camera.position.x = 6000;
+  camera.position.y = 6000;
+  camera.position.z = 6000;
+  camera.lookAt(new THREE.Vector3(6000,6000,6000));
+}
+
 /************************ Initialize ************************/
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(
@@ -273,6 +280,12 @@ var boxBurning = false;
 var boxFire = null;
 
 var got_key = false;
+var door_swing = false;
+var doorSwingTimer = new THREE.Clock();
+var game_cleared = false;
+
+var gameTimer = new THREE.Clock();
+var lastTime = 0;
 
 /****************** Set up menu GUI *********************/
 var menu = new dat.GUI();
@@ -316,7 +329,7 @@ menu.add(options, 'sound').name('Sound')
     });
 
 /********************** Lights **************************/
-var lightSource = new THREE.SpotLight(0xffffff);
+/*var lightSource = new THREE.SpotLight(0xffffff);
 lightSource.position.set(-5, 95, 0);
 scene.add(lightSource);
 
@@ -331,6 +344,19 @@ scene.add(lightSource3);
 var lightSource4 = new THREE.SpotLight(0xffffff);
 lightSource4.position.set(0, 80, 100);
 scene.add(lightSource4);
+*/
+var lightSource = new THREE.PointLight(0xffffff, 1.0, 500);
+lightSource.position.set(0, 95, 0);
+//lightSource5.intensity = 10.0;
+scene.add(lightSource);
+
+var gameClearLightSource = new THREE.PointLight(0xffffff, 5.0, 300);
+gameClearLightSource.position.set(3000, 3100, 3000);
+scene.add(gameClearLightSource);
+
+var gameOverLightSource = new THREE.PointLight(0xffffff, 5.0, 300);
+gameOverLightSource.position.set(6000, 6100, 6000);
+scene.add(gameOverLightSource);
 
 /****************** 6 sides of the room ******************/
 var roomSize = 100; // half the wdith of each side
@@ -498,10 +524,10 @@ var keyTooth2 = new THREE.BoxGeometry(keySize/2, keySize/2, keySize/2);
 keyTooth2.applyMatrix(new THREE.Matrix4().makeTranslation(keySize*3/4, 0, 0));
 
 var keyObject = new THREE.Object3D();
-keyObject.add(new THREE.Mesh(keyRing, keyMaterial));
-keyObject.add(new THREE.Mesh(keyTrunk, keyMaterial));
-keyObject.add(new THREE.Mesh(keyTooth1, keyMaterial));
-keyObject.add(new THREE.Mesh(keyTooth2, keyMaterial));
+keyObject.add(new THREE.Mesh(keyRing, keyMaterial))
+         .add(new THREE.Mesh(keyTrunk, keyMaterial))
+         .add(new THREE.Mesh(keyTooth1, keyMaterial))
+         .add(new THREE.Mesh(keyTooth2, keyMaterial));
 keyObject.rotateOnAxis(new THREE.Vector3(1,0,0), Math.PI);
 //scene.add(keyObject);
 
@@ -577,7 +603,7 @@ objectGroups.push(fireCandle);
 /********************* Desk object *************************/
 var deskObjectGroup = new ObjectGroup();
 deskObjectGroup.name = "desk";
-deskObjectGroup.pickable = false;
+deskObjectGroup.pickable = true;
 
 var deskMaterial = new THREE.MeshPhongMaterial({
   name: "deskMaterial",
@@ -684,6 +710,9 @@ var doorObjectGroup = new ObjectGroup();
 doorObjectGroup.name = "door";
 doorObjectGroup.pickable = true;
 
+var doorGeom = new THREE.BoxGeometry(60, 160, 3);
+doorGeom.applyMatrix(new THREE.Matrix4().makeTranslation(30, 0, 0));
+
 var doorMaterial = new THREE.ShaderMaterial({
   name: "doorMaterial",
   uniforms: {
@@ -695,8 +724,9 @@ var doorMaterial = new THREE.ShaderMaterial({
   vertexShader: document.getElementById('textureVertexShader').textContent,
   fragmentShader: document.getElementById('textureFragmentShader').textContent,
 });
-var doorObject = new THREE.Mesh(new THREE.BoxGeometry(60, 160, 3), doorMaterial);
-doorObject.position.set(0, -20, 99.5);
+var doorObject = new THREE.Mesh(doorGeom, doorMaterial);
+doorObject.position.set(-30, -20, 99.5);
+//doorObject.rotateOnAxis(new THREE.Vector3(0,1,0), Math.PI/4);
 
 doorObjectGroup.objects.push(doorObject);
 doorObjectGroup.lookClosePosition.z = 40;
@@ -704,6 +734,14 @@ doorObjectGroup.lookCloseDirection.z = 1;
 doorObjectGroup.lookCloseMessage =
   "This door seems to be the only way out, but it's locked from outside.";
 objectGroups.push(doorObjectGroup);
+
+/**************** Empty space behind door *****************/
+var plainBlackMaterial = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+});
+var doorExitObject = new THREE.Mesh(new THREE.BoxGeometry(60, 160, 2), plainBlackMaterial);
+doorExitObject.position.set(0, -20, 100);
+scene.add(doorExitObject);
 
 /********************* Elastic ball ***********************/
 var a = 10;
@@ -719,7 +757,86 @@ var elasticBallGeom = new THREE.ParametricGeometry(
   120, 120
 );
 var elasticBallObject = new THREE.Mesh(elasticBallGeom, keyMaterial);
-scene.add(elasticBallObject);
+//scene.add(elasticBallObject);
+
+/********************* Animated clock *********************/
+var clockObjectGroup = new ObjectGroup();
+clockObjectGroup.name = "clock";
+clockObjectGroup.pickable = true;
+
+var arrowDir = new THREE.Vector3(0, 1, 0);
+var clockArrow = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(0, 0, 0), 8, 0x000000);
+clockArrow.rotateOnAxis(new THREE.Vector3(0,1,0), -Math.PI/2);
+clockArrow.position.set(96, 40, 70);
+
+var clockBody = new THREE.CylinderGeometry(10, 10, 1, 32);
+clockBody.applyMatrix(new THREE.Matrix4().makeRotationX(Math.PI/2));
+clockBody.applyMatrix(new THREE.Matrix4().makeTranslation(0,0,-3));
+var clockMaterial = new THREE.MeshPhongMaterial({
+  name: "clockMaterial",
+  ambient   : 0xffffff,
+  color   : 0xffffff,
+  shininess : 40, 
+  specular  : 0xffffff,
+  //emissive: 0xffffff,
+  shading   : THREE.SmoothShading,
+  side: THREE.DoubleSide,
+});
+
+var clockBodyObject = new THREE.Mesh(clockBody, clockMaterial)
+//clockObject//.add(clockArrow)
+//           .add(new THREE.Mesh(clockBody, clockMaterial));
+//clockObject = new THREE.Mesh(clockBody, clockMaterial);
+clockBodyObject.rotateOnAxis(new THREE.Vector3(0,1,0), -Math.PI/2);
+clockBodyObject.position.set(97, 40, 70);
+
+clockObjectGroup.objects.push(clockBodyObject);
+clockObjectGroup.objects.push(clockArrow);
+clockObjectGroup.lookClosePosition.x = clockBodyObject.position.x - 20;
+clockObjectGroup.lookClosePosition.y = clockBodyObject.position.y;
+clockObjectGroup.lookClosePosition.z = clockBodyObject.position.z;
+clockObjectGroup.lookCloseDirection.x = 1;
+clockObjectGroup.lookCloseMessage =
+  "A clock? Doesn't look like an ordinary clock.. "+
+  "I have a feeling something bad will happen if it makes a full cycle..";
+
+objectGroups.push(clockObjectGroup);
+
+/**************** Game clear 3D text object ***************/
+var gameClearGeom = new THREE.TextGeometry("Game Clear", {
+  size: 25,
+});
+gameClearGeom.applyMatrix(new THREE.Matrix4().makeTranslation(2905, 3000, 2900));
+
+var gameClearMaterial = new THREE.MeshPhongMaterial({
+  name: "gameClearMaterial",
+  ambient   : 0xffffff,
+  color   : 0xff6600,
+  shininess : 40, 
+  specular  : 0xffffff,
+  //emissive: 0xffffff,
+  shading   : THREE.SmoothShading,
+  side: THREE.DoubleSide,
+});
+scene.add(new THREE.Mesh(gameClearGeom, gameClearMaterial));
+
+/*************** Game over 3D text object *****************/
+var gameOverGeom = new THREE.TextGeometry("Game Over", {
+  size: 25,
+});
+gameOverGeom.applyMatrix(new THREE.Matrix4().makeTranslation(5915, 6000, 5900));
+
+var gameOverMaterial = new THREE.MeshPhongMaterial({
+  name: "gameOverMaterial",
+  ambient   : 0xffffff,
+  color   : 0x9900cc,
+  shininess : 40, 
+  specular  : 0xffffff,
+  //emissive: 0xffffff,
+  shading   : THREE.SmoothShading,
+  side: THREE.DoubleSide,
+});
+scene.add(new THREE.Mesh(gameOverGeom, gameOverMaterial));
 
 /*************** add all objects to the scene *************/
 for (var i=0; i<objectGroups.length; i++) {
@@ -730,7 +847,7 @@ for (var i=0; i<objectGroups.length; i++) {
 }
 
 
-
+gameTimer.start();
 camera.position.z = 3;
 
 /*********************** Listeners ************************/
@@ -744,7 +861,7 @@ function onMouseDown(event) {
 
   mouseDown = true;
 
-  var selectedObjGroup = getSelectedObjectGroup();
+  var selectedObjectGroup = getSelectedObjectGroup();
 
   if (lookCloseMode) {
     // exit look close mode
@@ -753,9 +870,23 @@ function onMouseDown(event) {
     return;
   }
 
-  if (selectedObjGroup != null) {
-    // enter look close mode
-    enterLookCloseMode(selectedObjGroup);
+  if (selectedObjectGroup != null) {
+    // some special cases for clicking an object
+    if (selectedObjectGroup.name == "wooden box" && holding_wooden_box) {
+      // clicking wooden box while holding it should do nothing
+      return;
+    } else if (selectedObjectGroup.name == "wooden box" && wooden_box_found) {
+      // second click on the wooden box
+      holding_wooden_box = true;
+      return;
+    } else if (selectedObjectGroup.name == "door" && got_key) {
+      door_swing = true;
+      doorSwingTimer.start();
+      return;
+    }
+
+    // otherwise, just enter look close mode
+    enterLookCloseMode(selectedObjectGroup);
   }
 
   lastX = event.pageX;
@@ -843,8 +974,14 @@ var render = function () {
   var selectedObjectGroup = getSelectedObjectGroup();
   if (selectedObjectGroup != null) {
     for (var i=0; i<selectedObjectGroup.objects.length; i++) {
-      selectedObjectGroup.objects[i].material.transparent = true;
-      selectedObjectGroup.objects[i].material.opacity = 0.3; // this will get overriden for ShaderMaterial
+        if (lookCloseMode) {
+          // disable picking in look close mode
+          break;
+        }
+        if (selectedObjectGroup.objects[i].material != null) {
+          selectedObjectGroup.objects[i].material.transparent = true;
+          selectedObjectGroup.objects[i].material.opacity = 0.3; // this will get overriden for ShaderMaterial
+        }
     }
   }
 
@@ -897,12 +1034,39 @@ var render = function () {
     keyObjectGroup.lookClosePosition.z = keyObject.position.z+40;
     keyObjectGroup.lookCloseDirection.z = -1.0;
     keyObjectGroup.lookCloseMessage =
-      "Obtained a key!";
+      "Found a key in the box!";
     
     got_key = true;
 
     scene.add(keyObject);
     enterLookCloseMode(keyObjectGroup);
+  }
+
+  // animate clock arrow
+  var timeFraction = (lastTime - gameTimer.getElapsedTime())/TIME_LIMIT;
+  arrowDir.applyAxisAngle(new THREE.Vector3(1,0,0), -Math.PI*2*timeFraction/*gameTimer.getElapsedTime()*Math.PI*2/60*/);
+  clockArrow.setDirection(arrowDir);
+  lastTime = gameTimer.getElapsedTime();
+
+  // animate door when upon game clear
+  if (door_swing && doorSwingTimer.running) {
+    doorObject.rotateOnAxis(new THREE.Vector3(0,1,0), Math.PI/90);
+    if (doorSwingTimer.getElapsedTime() > 6) {
+      // swing door for 6 seconds and stop
+      door_swing = false;
+      doorSwingTimer.stop();
+      gameTimer.stop();
+
+      // and show game clear text
+      game_cleared = true;
+    }
+  }
+
+  if (game_cleared) {
+    gameClear();
+  } else if (gameTimer.getElapsedTime() > TIME_LIMIT) {
+    // time's up
+    gameOver();
   }
 
   requestAnimationFrame(render);
