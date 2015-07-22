@@ -790,7 +790,7 @@ objectGroups.push(clockObjectGroup);
 var gameClearGeom = new THREE.TextGeometry("Game Clear", {
   size: 25,
 });
-gameClearGeom.applyMatrix(new THREE.Matrix4().makeTranslation(2905, 3000, 2900));
+gameClearGeom.applyMatrix(new THREE.Matrix4().makeTranslation(2905, 3000, 2800));
 
 var gameClearMaterial = new THREE.MeshPhongMaterial({
   name: "gameClearMaterial",
@@ -808,7 +808,7 @@ scene.add(new THREE.Mesh(gameClearGeom, gameClearMaterial));
 var gameOverGeom = new THREE.TextGeometry("Game Over", {
   size: 25,
 });
-gameOverGeom.applyMatrix(new THREE.Matrix4().makeTranslation(5915, 6000, 5900));
+gameOverGeom.applyMatrix(new THREE.Matrix4().makeTranslation(5915, 6000, 5800));
 
 var gameOverMaterial = new THREE.MeshPhongMaterial({
   name: "gameOverMaterial",
