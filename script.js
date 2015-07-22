@@ -296,6 +296,7 @@ var options = {
   perlinNoise: true,
   reflection: true,
   sound: true,
+  speed: 1,
 };
 menu.add(options, 'textureMapping').name('Texture Mapping')
     .onFinishChange(function() {
@@ -327,6 +328,12 @@ menu.add(options, 'sound').name('Sound')
         soundSystem.stop();
       }
     });
+menu.add(options, 'speed').name('Speed')
+	.min(1)
+	.max(60)
+	.onFinishChange(function() {
+	  TIME_LIMIT /= options.speed;
+	});
 
 /********************** Lights **************************/
 var lightSource = new THREE.PointLight(0xffffff, 1.0, 500);
