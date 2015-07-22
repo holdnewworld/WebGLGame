@@ -122,7 +122,7 @@ function SoundSystem(source) {
     var that = this;
     setTimeout(function() {
       that.backgroundLoop();
-    }, 5500);
+    }, this.background.duration - 500);
   };
 
   this.startBackground = function() {
@@ -136,7 +136,11 @@ function SoundSystem(source) {
   }
 
   this.stop = function() {
-    this.background.pause();
+    if (this.background != null) {
+      this.background.pause();
+    }
+    this.background1.pause();
+    this.background2.pause();
     this.paused = true;
   }
 }
@@ -285,7 +289,8 @@ var doorSwingTimer = new THREE.Clock();
 var game_cleared = false;
 
 var gameTimer = new THREE.Clock();
-var lastTime = 0;
+var gameSpeed = 1;
+var elapsedTime = 0;
 
 /****************** Set up menu GUI *********************/
 var menu = new dat.GUI();
@@ -296,7 +301,7 @@ var options = {
   perlinNoise: true,
   reflection: true,
   sound: true,
-  speed: 1,
+  speed: gameSpeed,
 };
 menu.add(options, 'textureMapping').name('Texture Mapping')
     .onFinishChange(function() {
@@ -326,13 +331,16 @@ menu.add(options, 'sound').name('Sound')
         soundSystem.startBackground();
       } else {
         soundSystem.stop();
+        if (burningSoundSystem != null) {
+          burningSoundSystem.stop();
+        }
       }
     });
 menu.add(options, 'speed').name('Speed')
 	.min(1)
 	.max(60)
 	.onFinishChange(function() {
-	  TIME_LIMIT /= options.speed;
+	  gameSpeed = options.speed;
 	});
 
 /********************** Lights **************************/
@@ -628,9 +636,12 @@ deskObjectGroup.objects = [
 objectGroups.push(deskObjectGroup);
 
 /********************* Sound feature **********************/
-//startPlayingSound("data/Strange_Days-Mike_Koenig-176042049.mp3");
+// play background music
 var soundSystem = new SoundSystem("data/Strange_Days-Mike_Koenig-176042049.mp3");
 soundSystem.startBackground();
+
+// burning sound to be started when wooden box starts to burn
+var burningSoundSystem = new SoundSystem("data/Fire-SoundBible.com-517801090.mp3");
 
 /********************* mirror object **********************/
 var mirrorObjectGroup = new ObjectGroup();
@@ -758,7 +769,7 @@ clockObjectGroup.pickable = true;
 var arrowDir = new THREE.Vector3(0, 1, 0);
 var clockArrow = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(0, 0, 0), 8, 0x000000);
 clockArrow.rotateOnAxis(new THREE.Vector3(0,1,0), -Math.PI/2);
-clockArrow.position.set(96, 40, 70);
+clockArrow.position.set(99, 40, 70);
 
 var clockBody = new THREE.CylinderGeometry(10, 10, 1, 32);
 clockBody.applyMatrix(new THREE.Matrix4().makeRotationX(Math.PI/2));
@@ -873,6 +884,13 @@ function onMouseDown(event) {
     } else if (selectedObjectGroup.name == "door" && got_key) {
       door_swing = true;
       doorSwingTimer.start();
+
+      // play door creak sound
+      // file source: http://www.freesoundeffects.com/free-track/creaky-door-3-426727/
+      if (options.sound) {
+        (new Audio("data/creaky_door_3.mp3")).play();
+      }
+
       return;
     }
 
@@ -1000,13 +1018,20 @@ var render = function () {
   } else if (burnTimer.running && !boxBurning && burnTimer.getElapsedTime()>4 && burnTimer.getElapsedTime()<10) {
     console.log("waiting for box on fire..");
     boxBurning = true;
+    // add visual effect for burning wooden box
     boxFire = new FireSystem(woodenBoxObject.position.x, woodenBoxObject.position.y, woodenBoxObject.position.z, 3, 12, 12);
     scene.add(boxFire.particleSystem);
+    // add sound effect for burning
+    if (options.sound) {
+      burningSoundSystem.startBackground();
+    }
   } else if (burnTimer.running && boxBurning && burnTimer.getElapsedTime()>=10) {
     boxBurning = false;
     burnTimer.stop();
     scene.remove(boxFire.particleSystem);
     boxFire = null;
+
+    burningSoundSystem.stop();
 
     var x = woodenBoxObject.position.x;
     var y = woodenBoxObject.position.y;
@@ -1033,15 +1058,16 @@ var render = function () {
     enterLookCloseMode(keyObjectGroup);
   }
 
+  var timeDelta = gameSpeed * gameTimer.getDelta();
+
   // animate clock arrow
-  var timeFraction = (lastTime - gameTimer.getElapsedTime())/TIME_LIMIT;
-  arrowDir.applyAxisAngle(new THREE.Vector3(1,0,0), -Math.PI*2*timeFraction/*gameTimer.getElapsedTime()*Math.PI*2/60*/);
+  var timeFraction = timeDelta/TIME_LIMIT;
+  arrowDir.applyAxisAngle(new THREE.Vector3(1,0,0), Math.PI*2*timeFraction);
   clockArrow.setDirection(arrowDir);
-  lastTime = gameTimer.getElapsedTime();
 
   // animate door when upon game clear
   if (door_swing && doorSwingTimer.running) {
-    doorObject.rotateOnAxis(new THREE.Vector3(0,1,0), Math.PI/90);
+    doorObject.rotateOnAxis(new THREE.Vector3(0,1,0), gameSpeed*Math.PI/90);
     if (doorSwingTimer.getElapsedTime() > 6) {
       // swing door for 6 seconds and stop
       door_swing = false;
@@ -1055,10 +1081,12 @@ var render = function () {
 
   if (game_cleared) {
     gameClear();
-  } else if (gameTimer.getElapsedTime() > TIME_LIMIT) {
+  } else if (elapsedTime > TIME_LIMIT) {
     // time's up
     gameOver();
   }
+
+  elapsedTime += timeDelta;
 
   requestAnimationFrame(render);
 
